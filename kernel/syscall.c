@@ -141,6 +141,30 @@ static uint64 (*syscalls[])(void) = {
 #endif
 };
 
+static char *syscall_names[] = {
+  [SYS_fork] =   "fork",
+  [SYS_exit]  =  "exit",
+  [SYS_wait]   = "wait",
+  [SYS_pipe] =   "pipe",
+  [SYS_read] =   "read",
+  [SYS_kill] =   "kill",
+  [SYS_exec] =   "exec",
+  [SYS_fstat]=   "fstat",
+  [SYS_chdir]=   "chdir",
+  [SYS_dup]  =   "dup",
+  [SYS_getpid]=  "getpid",
+  [SYS_sbrk] =   "sbrk",
+  [SYS_sleep]=   "sleep",
+  [SYS_uptime]=  "uptime",
+  [SYS_open]  = "open",
+  [SYS_write]=   "write",
+  [SYS_mknod]=   "mknod",
+  [SYS_unlink]=  "unlink",
+  [SYS_link]  =  "link",
+  [SYS_mkdir]  = "mkdir",
+  [SYS_close] =  "close",
+  [SYS_pgaccess]= "pgaccess",
+};
 
 
 void
@@ -149,12 +173,35 @@ syscall(void)
   int num;
   struct proc *p = myproc();
 
+  int hazardous[] = { SYS_kill, SYS_unlink, SYS_exec };
+  int HAZARD_NUM = sizeof(hazardous) / sizeof(hazardous[0]);
+
   num = p->trapframe->a7;
-  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+
+  if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    // Skip write syscall debug (too noisy)
+    if (num != SYS_write)
+      printf("[DEBUG] syscall %d from pid %d\n", num, p->pid);
+
+    // Hazardous syscall monitoring
+    for (int i = 0; i < HAZARD_NUM; i++) {
+      if (num == hazardous[i]) {
+        if (num < HAZARD_SYSCALL_NUM) {
+          p->syscall_counts[num]++;
+printf("[DEBUG] syscall %d count now %d for pid %d\n", num, p->syscall_counts[num], p->pid);
+        }
+
+        if (num < HAZARD_SYSCALL_NUM && p->syscall_counts[num] == 4) {
+          printf("[SYSMON] ALERT: pid %d exceeded threshold for syscall %s\n",
+                 p->pid, syscall_names[num]);
+        }
+      }
+    }
+
+    // Actually call the syscall handler
     p->trapframe->a0 = syscalls[num]();
   } else {
-    printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
+    printf("%d %s: unknown sys call %d\n", p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
 }

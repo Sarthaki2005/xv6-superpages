@@ -1,4 +1,5 @@
 // Saved registers for kernel context switches.
+#define HAZARD_SYSCALL_NUM 32
 struct context {
   uint64 ra;
   uint64 sp;
@@ -85,14 +86,15 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 // Per-process state
 struct proc {
   struct spinlock lock;
-
+   struct usyscall *usyscall;
   // p->lock must be held when using these:
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-
+//SYS_CALL TARCKING 
+int syscall_counts[HAZARD_SYSCALL_NUM];
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 

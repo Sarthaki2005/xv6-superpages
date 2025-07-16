@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -14,7 +16,8 @@ pagetable_t kernel_pagetable;
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
-
+void *kalloc_super();
+extern struct proc* myproc(void);
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -48,6 +51,7 @@ kvmmake(void)
   
   return kpgtbl;
 }
+
 
 // Initialize the one kernel_pagetable
 void
@@ -95,6 +99,25 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     }
   }
   return &pagetable[PX(0, va)];
+}
+
+pte_t* walk_level(pagetable_t pagetable,uint64 va,int target_level){
+if(va>=MAXVA)
+panic("walk_level");
+
+for(int level=2;level>target_level;level--){
+pte_t* pte =&pagetable[PX(level,va)];
+if(*pte & PTE_V){
+pagetable=(pagetable_t)PTE2PA(*pte);
+
+}else{
+if(!target_level || (pagetable=(pde_t*)kalloc())==0)
+return  0;
+memset(pagetable,0,PGSIZE);
+*pte=PA2PTE(pagetable) | PTE_V;
+}
+}
+return &pagetable[PX(target_level,va)];
 }
 
 // Look up a virtual address, return the physical address,
@@ -158,7 +181,22 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   }
   return 0;
 }
+//mappapges_large for super pages 
+int mappages_large(pagetable_t pagetable,uint64 va,uint64 pa,int perm){
+if(va % SUPERPAGE_SIZE!=0 || pa% SUPERPAGE_SIZE!=0){
+panic("mapages:large");
+}
+printf("[SUPERPAGE] Mapping 2MB: va 0x%p → pa 0x%p\n", va, pa);
+pte_t *pte=walk_level(pagetable,va,1);
+if(pte==0) return -1;
 
+if(*pte & PTE_V){
+panic("mappages_large:remap");
+}
+
+*pte=((pa>>12)<<10) | perm | PTE_V;
+return 0;
+}
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
@@ -227,9 +265,21 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
     return oldsz;
 
   oldsz = PGROUNDUP(oldsz);
-  for(a = oldsz; a < newsz; a += PGSIZE){
-    mem = kalloc();
+  for(a = oldsz; a < newsz;){
+//if 2mb aligned and still size>=SUPERPAGE_SIZE is left
+if(a % SUPERPAGE_SIZE==0 && ((newsz-a)>=SUPERPAGE_SIZE)){
+void* pa=kalloc_super();
+if(!pa) return 0;
+printf("[SUPER TEST] Trying 2MB map: va = 0x%p\n", a);
+if(mappages_large(pagetable,a,(uint64)pa, PTE_R | PTE_W | PTE_X | PTE_U)!=0){
+return 0;
+}
+a+=SUPERPAGE_SIZE;
+}
+ else{
+   mem = kalloc();
     if(mem == 0){
+
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -239,8 +289,12 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
+a+=PGSIZE;
   }
-  return newsz;
+
+
+}
+return newsz;  
 }
 
 // Deallocate user pages to bring the process size from oldsz to
@@ -431,4 +485,46 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+void vmprinter(pagetable_t pagetable,int level){
+for(int i=0;i<512;i++){
+pte_t pte=pagetable[i];
+ if(pte & PTE_V){
+for(int j=0;j<level;j++){
+printf(" ..");
+
+}
+printf("%d: pte %p pa %p\n",i,pte,(void*)PTE2PA(pte));
+if((pte & (PTE_R | PTE_W | PTE_X))==0){
+uint64 child=PTE2PA(pte);
+vmprinter((pagetable_t)child,level+1);
+}
+}
+}
+}
+void vmprint(pagetable_t pagetable){
+printf("page table %p\n",pagetable);
+vmprinter(pagetable,1);
+}
+
+
+int pgaudit(pagetable_t pagetable ,uint64 va,int num,uint64 mask)
+{
+uint64 bitmask=0;
+
+for(int i=0;i<num;i++){
+pte_t *pte=walk(pagetable,va+i*PGSIZE,0);
+if(pte && (*pte & PTE_V)){
+if(*pte & PTE_A){
+struct proc* p=myproc();
+printf("[SYSMON] pid %d accessed VA %p (page %d)\n",p->pid,va,i );
+bitmask|=(1<<i);
+*pte&=~PTE_A;
+}
+}
+}
+if(copyout(pagetable,mask ,(char*)&bitmask,sizeof(bitmask))<0){
+return -1;
+}
+return 0;
 }

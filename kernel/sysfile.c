@@ -57,7 +57,7 @@ sys_dup(void)
 {
   struct file *f;
   int fd;
-
+ 
   if(argfd(0, 0, &f) < 0)
     return -1;
   if((fd=fdalloc(f)) < 0)
@@ -69,6 +69,8 @@ sys_dup(void)
 uint64
 sys_read(void)
 {
+ 
+
   struct file *f;
   int n;
   uint64 p;
@@ -81,6 +83,8 @@ sys_read(void)
 uint64
 sys_write(void)
 {
+   
+
   struct file *f;
   int n;
   uint64 p;
@@ -94,6 +98,8 @@ sys_write(void)
 uint64
 sys_close(void)
 {
+  
+
   int fd;
   struct file *f;
 
@@ -286,6 +292,7 @@ create(char *path, short type, short major, short minor)
 uint64
 sys_open(void)
 {
+   
   char path[MAXPATH];
   int fd, omode;
   struct file *f;

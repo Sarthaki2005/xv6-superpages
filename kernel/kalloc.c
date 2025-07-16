@@ -1,7 +1,6 @@
 // Physical memory allocator, for user processes,
 // kernel stacks, page-table pages,
 // and pipe buffers. Allocates whole 4096-byte pages.
-
 #include "types.h"
 #include "param.h"
 #include "memlayout.h"
@@ -13,7 +12,7 @@ void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
-
+void* freemem_super=0;
 struct run {
   struct run *next;
 };
@@ -80,3 +79,21 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+void* kalloc_super() {
+  if (freemem_super == 0)
+    freemem_super = (void*)PGROUNDUP((uint64)end);
+
+  // Make sure freemem_super itself is 2MB aligned
+  freemem_super = (void*)ROUNDUP_2MB((uint64)freemem_super);
+
+  void* r = freemem_super;
+  freemem_super = (void*)((uint64)freemem_super + SUPERPAGE_SIZE);
+
+  printf("[KALLOC_SUPER] Allocated 2MB block at 0x%p\n", r);
+  return r;
+}
+
+
+
+
