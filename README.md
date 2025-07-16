@@ -21,3 +21,6 @@ Superpages reduce TLB pressure and improve memory mapping efficiency by mapping 
 
 ```bash
 make qemu
+
+in xv6-shell
+$ supertest
