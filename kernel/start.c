@@ -34,10 +34,14 @@ start()
   w_satp(0);
 
   // delegate all interrupts and exceptions to supervisor mode.
+  // delegate all interrupts and exceptions to supervisor mode.
   w_medeleg(0xffff);
   w_mideleg(0xffff);
-  w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
+  // allow supervisor mode to read the cycle counter.
+  w_mcounteren(r_mcounteren() | MCOUNTEREN_CY);
+
+  w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
   // configure Physical Memory Protection to give supervisor mode
   // access to all of physical memory.
   w_pmpaddr0(0x3fffffffffffffull);

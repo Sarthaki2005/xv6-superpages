@@ -190,7 +190,9 @@ $U/_sysmon_test\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-        
+        $U/_bench_tlb\
+        $U/_bench_alloc\
+        $U/_bench_seq\
 
 
 

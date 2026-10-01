@@ -101,25 +101,31 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   return &pagetable[PX(0, va)];
 }
 
-pte_t* walk_level(pagetable_t pagetable,uint64 va,int target_level){
-if(va>=MAXVA)
-panic("walk_level");
+pte_t*
+walk_level(pagetable_t pagetable, uint64 va, int target_level, int alloc)
+{
+  if(va >= MAXVA)
+    panic("walk_level");
 
-for(int level=2;level>target_level;level--){
-pte_t* pte =&pagetable[PX(level,va)];
-if(*pte & PTE_V){
-pagetable=(pagetable_t)PTE2PA(*pte);
+  for(int level = 2; level > target_level; level--){
+    pte_t *pte = &pagetable[PX(level, va)];
 
-}else{
-if(!target_level || (pagetable=(pde_t*)kalloc())==0)
-return  0;
-memset(pagetable,0,PGSIZE);
-*pte=PA2PTE(pagetable) | PTE_V;
-}
-}
-return &pagetable[PX(target_level,va)];
-}
+    if(*pte & PTE_V){
+      pagetable = (pagetable_t)PTE2PA(*pte);
+    } else {
+      if(!alloc)
+        return 0;
 
+      if((pagetable = (pde_t*)kalloc()) == 0)
+        return 0;
+
+      memset(pagetable, 0, PGSIZE);
+      *pte = PA2PTE(pagetable) | PTE_V;
+    }
+  }
+
+  return &pagetable[PX(target_level, va)];
+}
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
@@ -187,7 +193,7 @@ if(va % SUPERPAGE_SIZE!=0 || pa% SUPERPAGE_SIZE!=0){
 panic("mapages:large");
 }
 printf("[SUPERPAGE] Mapping 2MB: va 0x%p → pa 0x%p\n", va, pa);
-pte_t *pte=walk_level(pagetable,va,1);
+pte_t *pte=walk_level(pagetable,va,1,1);
 if(pte==0) return -1;
 
 if(*pte & PTE_V){
@@ -203,27 +209,62 @@ return 0;
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
-  uint64 a;
-  pte_t *pte;
+  uint64 a = va;
+  uint64 end = va + npages * PGSIZE;
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 
-  for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0)
+  while(a < end){
+
+    /*
+     * First check whether this VA is covered by a 2MB superpage.
+     */
+    if((a % SUPERPAGE_SIZE) == 0 &&
+       end - a >= SUPERPAGE_SIZE){
+
+      pte_t *lpte = walk_level(pagetable, a, 1, 0);
+
+      if(lpte != 0 &&
+         (*lpte & PTE_V) &&
+         (PTE_FLAGS(*lpte) & (PTE_R | PTE_W | PTE_X))){
+
+        uint64 pa = PTE2PA(*lpte);
+
+        if(do_free)
+          kfree_super((void*)pa);
+
+        *lpte = 0;
+
+        a += SUPERPAGE_SIZE;
+        continue;
+      }
+    }
+
+    /*
+     * Otherwise this is a normal 4KB page.
+     */
+    pte_t *pte = walk(pagetable, a, 0);
+
+    if(pte == 0)
       panic("uvmunmap: walk");
+
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
+
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
+
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
+
     *pte = 0;
+
+    a += PGSIZE;
   }
 }
-
 // create an empty user page table.
 // returns 0 if out of memory.
 pagetable_t
@@ -459,11 +500,13 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+
     n = PGSIZE - (srcva - va0);
     if(n > max)
       n = max;
 
     char *p = (char *) (pa0 + (srcva - va0));
+
     while(n > 0){
       if(*p == '\0'){
         *dst = '\0';
@@ -472,6 +515,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
       } else {
         *dst = *p;
       }
+
       --n;
       --max;
       p++;
@@ -480,12 +524,14 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
     srcva = va0 + PGSIZE;
   }
+
   if(got_null){
     return 0;
   } else {
     return -1;
   }
 }
+
 void vmprinter(pagetable_t pagetable,int level){
 for(int i=0;i<512;i++){
 pte_t pte=pagetable[i];

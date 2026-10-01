@@ -63,7 +63,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
-
+void kfree_super(void *pa);
 // log.c
 void            initlog(int, struct superblock*);
 void            log_write(struct buf*);
@@ -138,7 +138,7 @@ int             argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
-
+uint64          sys_rdcycle(void);
 // trap.c
 extern uint     ticks;
 void            trapinit(void);

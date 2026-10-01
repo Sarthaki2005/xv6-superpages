@@ -94,6 +94,18 @@ void* kalloc_super() {
   return r;
 }
 
+void
+kfree_super(void *pa)
+{
+  if(((uint64)pa % SUPERPAGE_SIZE) != 0 ||
+     (char*)pa < end ||
+     (uint64)pa >= PHYSTOP ||
+     (uint64)pa + SUPERPAGE_SIZE > PHYSTOP)
+    panic("kfree_super");
+
+  // Poison the entire superpage to catch dangling references.
+  memset(pa, 1, SUPERPAGE_SIZE);
+}
 
 
 

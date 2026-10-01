@@ -124,3 +124,10 @@ sys_uptime(void)
   return xticks;
 }
 
+uint64
+sys_rdcycle(void)
+{
+  uint64 cycles;
+  asm volatile("rdcycle %0" : "=r"(cycles));
+  return cycles;
+}

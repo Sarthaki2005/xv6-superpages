@@ -1,4 +1,5 @@
 // which hart (core) is this?
+
 static inline uint64
 r_mhartid()
 {
@@ -16,6 +17,21 @@ r_mhartid()
 #define MSTATUS_MPP_S (1L << 11)
 #define MSTATUS_MPP_U (0L << 11)
 #define MSTATUS_MIE (1L << 3)    // machine-mode interrupt enable.
+#define MCOUNTEREN_CY  (1L << 0)
+
+static inline uint64
+r_mcounteren()
+{
+  uint64 x;
+  asm volatile("csrr %0, mcounteren" : "=r" (x));
+  return x;
+}
+
+static inline void
+w_mcounteren(uint64 x)
+{
+  asm volatile("csrw mcounteren, %0" : : "r" (x));
+}
 
 static inline uint64
 r_mstatus()
@@ -248,19 +264,19 @@ r_stval()
 }
 
 // Machine-mode Counter-Enable
-static inline void 
-w_mcounteren(uint64 x)
-{
-  asm volatile("csrw mcounteren, %0" : : "r" (x));
-}
+//static inline void 
+//w_mcounteren(uint64 x)
+//{
+//  asm volatile("csrw mcounteren, %0" : : "r" (x));
+//}
 
-static inline uint64
-r_mcounteren()
-{
-  uint64 x;
-  asm volatile("csrr %0, mcounteren" : "=r" (x) );
-  return x;
-}
+//static inline uint64
+//r_mcounteren()
+//{
+ // uint64 x;
+  //asm volatile("csrr %0, mcounteren" : "=r" (x) );
+  //return x;
+//}
 
 // machine-mode cycle counter
 static inline uint64
